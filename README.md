@@ -110,4 +110,4 @@
 | 8 | Obfuscator.ACY | 1,228 | 11.30% |
 | 9 | Gatak | 1,013 | 9.32% |
 
-![Class distribution](class_distribution.png)
+![Class distribution](https://drive.google.com/file/d/1ggICxsBrbPUSzY7GxzqNlrVdEqnln0aI/view?usp=sharing)
