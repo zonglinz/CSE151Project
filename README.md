@@ -110,7 +110,10 @@
 | 8 | Obfuscator.ACY | 1,228 | 11.30% |
 | 9 | Gatak | 1,013 | 9.32% |
 
+## Data plots
 ![Class distribution](https://github.com/zonglinz/CSE151Project/blob/main/class_distribution.png?raw=true)
+This tell us class imbalance (some malware families are much rarer). This impacts model training; consider stratified splits, class weights, or resampling.
 
+![Class distribution](https://github.com/zonglinz/CSE151Project/blob/main/Unknown-12.png?raw=true)
 
 
