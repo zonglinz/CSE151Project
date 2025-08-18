@@ -79,6 +79,36 @@
 | size_asm | int64 | continuous | numeric (interval/ratio) | 990 | 0.0 |  μ≈4.68e+06, σ≈3.74e+06 |
 | Class | int64 | categorical (numeric-codes likely) | nominal | 9 | 0.0 |  top: 3(2942); 2(2478); 1(1541) |
 
+## Subgroups (what they are & why they matter)
+
+- **Global size/scale** — (`line_count_asm`, `size_asm`)  
+  Rough size of the file and the assembly listing. *Different families/packers often produce consistently larger or smaller binaries.*
+
+- **Directives/structure** — (`asm_commands_dd`, `asm_commands_dw`, `asm_commands_endp`, `asm_commands_fword`)  
+  Assembler directives for defining data/words and marking procedures. *Structural “fingerprints” can hint at certain toolchains or packers.*
+
+- **Control-flow** — (`asm_commands_call`, `asm_commands_ret`, `asm_commands_jmp`, `asm_commands_je`/`jz`, `asm_commands_jl`/`jg`/`jb`/`jnb`, `asm_commands_jo`/`jno`, `asm_commands_rep`)  
+  Branching and function transfer. *High jump/call density may indicate obfuscation, anti-analysis tricks, or family-specific control patterns.*
+
+- **Data movement** — (`asm_commands_mov`, `asm_commands_lea`, `asm_commands_push`, `asm_commands_pop`, `asm_commands_xchg`, `asm_commands_in`/`out`, `asm_commands_ins`/`outs`, `asm_commands_stos`, `asm_commands_scas`)  
+  How values move between registers, memory, stack, and I/O. *Stack-heavy vs register-heavy movement can differentiate families.*
+
+- **Arithmetic/logic** — (`asm_commands_add`, `sub`, `mul`/`imul`, `inc`/`dec`, `cmp`, `test`, `or`/`xor`/`not`, shifts/rotates `shl`/`shr`/`sar`/`sal`/`rol`/`ror`, flags math `sbb`, sign/BCD ops `cdq`/`cwd`/`daa`)  
+  Bit-twiddling and math texture. *Encryption loops, checksums, and junk code often leave characteristic arithmetic/logic patterns.*
+
+- **Floating point (x87)** — (`asm_commands_faddp`, `fchs`, `fdiv`/`fdivr`, `fistp`, `fld`/`fstp`, `fxch`)  
+  Floating-point usage is uncommon in many malware families; *spikes can signal specific packers/obfuscators or inserted junk.*
+
+- **Flags/system** — (`asm_commands_stc`, `cld`, `cli`, `std`, `sti`, `sidt`, `cmc`, `wait`)  
+  CPU flags and privileged/system-level instructions. *These can reveal low-level routines or anti-analysis behaviors.*
+
+- **Other asm** — Any `asm_commands_*` not cleanly fitting the above buckets.  
+  *(Catch-all for rarer mnemonics.)*
+
+- **Target label** — (`Class`)  
+  The ground-truth family label: **1–9 →** Ramnit, Lollipop, Kelihos_ver3, Vundo, Simda, Tracur, Kelihos_ver1, Obfuscator.ACY, Gatak.  
+  *Not a feature, but what you predict.*
+
 
 ## Missing and duplicate values
 - **Missing cells:** **0** (rows with any missing: **0**)  
