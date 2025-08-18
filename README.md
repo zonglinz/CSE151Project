@@ -1,5 +1,5 @@
 # CSE151Project
-## 1) How many observations?
+## How many observations?
 - **Rows:** **10,868**
 - **Columns:** **69**
 
@@ -84,7 +84,7 @@
 - **Missing cells:** **0** (rows with any missing: **0**)  
 - **Duplicate rows:** **80**
 
-## 4) Target column and labels
+## Target column and labels
 - **Target candidate:** `Class` (multi-class).  
 - **Label → family mapping**
 - **1**: Ramnit
@@ -111,3 +111,6 @@
 | 9 | Gatak | 1,013 | 9.32% |
 
 ![Class distribution](https://github.com/zonglinz/CSE151Project/blob/main/class_distribution.png?raw=true)
+
+
+
