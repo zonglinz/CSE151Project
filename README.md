@@ -134,3 +134,47 @@ Baseline macro-F1: **0.845**
 
 Bar chart of permutation importance shows the five most predictive features. Shuffling line_count_asm and size_asm causes the largest macro-F1 drops, followed by asm_commands_dd, asm_commands_jmp, and asm_commands_push. Size/scale and control-flow/data-movement signals drive classification; the baseline macro-F1 before shuffling is 0.845 overall.
 
+## Preprocessing & Modeling Plan
+Full implementation is in **[notebooks/MS3_svm_chi2.ipynb](notebooks/MS3_svm_chi2.ipynb)** (executed in MS3).
+
+**Data integrity**
+- Drop exact duplicates (80). No missing values in `data.csv`.
+- Target: `Class` ∈ {1,…,9}; stratify all splits by `Class`.
+
+**Feature matrix**
+- Use all numeric features (exclude `Class`). These are counts/intensities of ASM mnemonics plus `size_asm`, `line_count_asm`.
+
+**Class imbalance**
+- The dataset is **imbalanced** (N = 10,868):
+  - 1 Ramnit: **1,541** (14.18%)  
+  - 2 Lollipop: **2,478** (22.80%)  
+  - 3 Kelihos_ver3: **2,942** (27.07%)  
+  - 4 Vundo: **475** (4.37%)  
+  - 5 Simda: **42** (0.39%) ← very rare  
+  - 6 Tracur: **751** (6.91%)  
+  - 7 Kelihos_ver1: **398** (3.66%)  
+  - 8 Obfuscator.ACY: **1,228** (11.30%)  
+  - 9 Gatak: **1,013** (9.32%)
+- **Handling strategy
+  - Use **stratified** train/val/test splits.
+  - Train with **cost-sensitive learning**: `class_weight="balanced"` in SVM.
+  - Optimize for **macro-F1** and per-class recall (not just accuracy).
+  - Compare against **SMOTE/Borderline-SMOTE** + light undersampling (train folds only); pick the best by CV macro-F1.
+  - Report confusion matrix and class-wise metrics.
+
+**Pipeline (mirrors code)**
+1. **Clip to non-negative**  
+   Ensures all features ≥ 0 so **χ² (chi-square)** is valid on count-like data.
+2. **Min-max scale [0,1]**  
+   Keeps features on a comparable range before χ² so very large counts don’t dominate the score.
+3. **Univariate feature selection: `SelectKBest(chi2, k≈90% of features)`**  
+   Keeps the highest χ² features associated with `Class`; reduces noise and speeds SVM.
+4. **Standardize (mean 0, std 1)**  
+   After selection, apply **StandardScaler** so RBF-SVM’s distance metric and `γ` behave well.
+5. **Classifier: `SVC(kernel="rbf", class_weight="balanced")`**  
+   `class_weight="balanced"` compensates class imbalance (rare families like Simda).
+
+**Model selection**
+- **Split:** 80/20 train/test, **Stratified** on `Class`.
+- **Search:** `RandomizedSearchCV` over `C ∈ [1e-1, 1e3]`, `γ ∈ [1e-6, 1]` (log-spaced), scoring = **macro-F1**, **StratifiedKFold(n_splits=3)**.
+- **Report:** macro-F1, accuracy, per-class precision/recall/F1, confusion matrix.
