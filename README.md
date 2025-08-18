@@ -106,9 +106,7 @@
   *(Catch-all for rarer mnemonics.)*
 
 - **Target label** — (`Class`)  
-  The ground-truth family label: **1–9 →** Ramnit, Lollipop, Kelihos_ver3, Vundo, Simda, Tracur, Kelihos_ver1, Obfuscator.ACY, Gatak.  
-  *Not a feature, but what you predict.*
-
+  The ground-truth family label: **1–9 →** Ramnit, Lollipop, Kelihos_ver3, Vundo, Simda, Tracur, Kelihos_ver1, Obfuscator.ACY, Gatak. 
 
 ## Missing and duplicate values
 - **Missing cells:** **0** (rows with any missing: **0**)  
@@ -209,5 +207,5 @@ Full implementation is in **[notebooks/MS3_svm_chi2.ipynb](notebooks/MS3_svm_chi
 - **Search:** `RandomizedSearchCV` over `C ∈ [1e-1, 1e3]`, `γ ∈ [1e-6, 1]` (log-spaced), scoring = **macro-F1**, **StratifiedKFold(n_splits=3)**.
 - **Report:** macro-F1, accuracy, per-class precision/recall/F1, confusion matrix.
 
-## MS2 code
+## MS2 code(environment) 
 [notebooks/MS2.ipynb](ms2.ipynb)
