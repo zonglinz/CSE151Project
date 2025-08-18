@@ -115,6 +115,22 @@
 ![Class distribution](https://github.com/zonglinz/CSE151Project/blob/main/Unknown-13.png?raw=true)
 This tell us class imbalance (some malware families are much rarer). This impacts model training; consider stratified splits, class weights, or resampling.
 
-![Class distribution](https://github.com/zonglinz/CSE151Project/blob/main/Unknown-12.png?raw=true)
+![Scatter matrix](https://github.com/zonglinz/CSE151Project/blob/main/Unknown-12.png?raw=true)
+Diagonals show right-skewed histograms with many near-zero values (zero-inflation) and long tails, especially for asm_commands_dd and asm_commands_mov. Off-diagonals show a strong positive, near-linear trend between size_asm and line_count_asm. dd/mov rise with size/lines but with wide spread and outlier.
 
+## Top-5 Most Important Features (Permutation Importance)
+
+Baseline macro-F1: **0.845**
+
+| Rank | Feature           | Δ macro-F1 (shuffle drop) |
+|----:|-------------------|---------------------------:|
+| 1   | line_count_asm    | 0.099816 |
+| 2   | size_asm          | 0.090650 |
+| 3   | asm_commands_dd   | 0.073983 |
+| 4   | asm_commands_jmp  | 0.070917 |
+| 5   | asm_commands_push | 0.060438 |
+
+![bar chart for top 5 column with highest weighted for prediction](https://github.com/zonglinz/CSE151Project/blob/main/Unknown-14.png?raw=true)
+
+Bar chart of permutation importance shows the five most predictive features. Shuffling line_count_asm and size_asm causes the largest macro-F1 drops, followed by asm_commands_dd, asm_commands_jmp, and asm_commands_push. Size/scale and control-flow/data-movement signals drive classification; the baseline macro-F1 before shuffling is 0.845 overall.
 
