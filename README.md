@@ -178,3 +178,6 @@ Full implementation is in **[notebooks/MS3_svm_chi2.ipynb](notebooks/MS3_svm_chi
 - **Split:** 80/20 train/test, **Stratified** on `Class`.
 - **Search:** `RandomizedSearchCV` over `C ∈ [1e-1, 1e3]`, `γ ∈ [1e-6, 1]` (log-spaced), scoring = **macro-F1**, **StratifiedKFold(n_splits=3)**.
 - **Report:** macro-F1, accuracy, per-class precision/recall/F1, confusion matrix.
+
+## MS2 code
+[notebooks/MS2.ipynb](ms2.ipynb)
