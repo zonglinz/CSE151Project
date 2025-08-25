@@ -443,6 +443,80 @@ weighted avg       0.98      0.98      0.98      2174
 
 ```
 
+## running fit graph for both model
+```python
+import numpy as np, pandas as pd, os, matplotlib.pyplot as plt
+from sklearn.base import clone
+from sklearn.metrics import accuracy_score
+from sklearn.model_selection import StratifiedKFold, cross_val_score
+
+base = search.best_estimator_
+bp   = search.best_params_.copy()
+
+cv = StratifiedKFold(n_splits=2, shuffle=True, random_state=42)
+
+def sweep_param(est, X, y, pname, grid):
+    tr_err, va_err = [], []
+    for v in grid:
+        m = clone(est).set_params(**{pname: float(v)})
+        m.fit(X, y)
+        tr_err.append(1.0 - accuracy_score(y, m.predict(X)))
+        va_acc = cross_val_score(m, X, y, cv=cv, scoring="accuracy", n_jobs=-1).mean()
+        va_err.append(1.0 - va_acc)
+    return np.array(tr_err), np.array(va_err)
+
+def diagnose(train_e, val_e, gap=0.08, high=0.25):
+    if (val_e - train_e) > gap and train_e < high: return "Overfitting"
+    if train_e > high and val_e > high and abs(val_e - train_e) < gap: return "Underfitting"
+    return "Good fit"
+
+os.makedirs("artifacts", exist_ok=True)
+
+C_fix = float(bp.get("svc__C", 1.0))
+gammas = np.logspace(-6, 0, 12)
+est_g = clone(base).set_params(**{"svc__C": C_fix})
+tr_g, va_g = sweep_param(est_g, Xtr, ytr, "svc__gamma", gammas)
+i_best_g = int(np.argmin(va_g))
+g_best = float(gammas[i_best_g])
+
+plt.figure(figsize=(7,5), dpi=140)
+plt.semilogx(gammas, tr_g, marker="o", label="Train error")
+plt.semilogx(gammas, va_g, marker="o", label="Validation error")
+plt.axvline(g_best, ls="--", lw=1)
+plt.title("Fit curve (sweep γ, C fixed)")
+plt.xlabel("gamma (log)"); plt.ylabel("Error = 1 - accuracy"); plt.legend(); plt.tight_layout()
+plt.savefig("artifacts/fitting_graph_gamma.png", dpi=180, bbox_inches="tight")
+plt.show()
+
+g_fix = float(bp.get("svc__gamma", g_best))
+Cs = np.logspace(-2, 3, 10)
+est_c = clone(base).set_params(**{"svc__gamma": g_fix})
+tr_c, va_c = sweep_param(est_c, Xtr, ytr, "svc__C", Cs)
+i_best_c = int(np.argmin(va_c))
+C_best = float(Cs[i_best_c])
+
+plt.figure(figsize=(7,5), dpi=140)
+plt.semilogx(Cs, tr_c, marker="o", label="Train error")
+plt.semilogx(Cs, va_c, marker="o", label="Validation error")
+plt.axvline(C_best, ls="--", lw=1)
+plt.title("Fit curve (sweep C, γ fixed)")
+plt.xlabel("C (log)"); plt.ylabel("Error = 1 - accuracy"); plt.legend(); plt.tight_layout()
+plt.savefig("artifacts/fitting_graph_C.png", dpi=180, bbox_inches="tight")
+plt.show()
+
+chosen = clone(base).set_params(**{"svc__C": C_best, "svc__gamma": g_best})
+chosen.fit(Xtr, ytr)
+train_err = 1.0 - accuracy_score(ytr, chosen.predict(Xtr))
+val_acc   = cross_val_score(chosen, Xtr, ytr, cv=cv, scoring="accuracy", n_jobs=-1).mean()
+val_err   = 1.0 - val_acc
+test_err  = 1.0 - accuracy_score(yte, chosen.predict(Xte))
+diag      = diagnose(train_err, val_err)
+
+print(f"Chosen hyperparams: C={C_best:.4g}, gamma={g_best:.3g}")
+print(f"Train error={train_err:.4f} | Val error={val_err:.4f} | Test error={test_err:.4f}")
+print(f"Diagnosis: {diag}")
+```
+### Baseline
 
 
 
