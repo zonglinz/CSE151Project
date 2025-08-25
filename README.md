@@ -549,7 +549,7 @@ my model plot: dashed line sits in the mid-C “good fit” region, near the min
 **Conclusion (1st model):**  
 My RBF-SVM with full preprocessing (impute → encode → targeted log1p → MinMax → χ² → standardize) delivers **Test Accuracy = 0.9829** and **Macro-F1 = 0.9744** with a small train–test gap (**Error: train 0.0058 vs test 0.0171**). Performance is strong and consistent across classes; the only notable weakness is **Class 5** (very small support, n=8) where **recall = 1.00** and **precision = 0.89** (a few false positives). Overall, the model generalizes well and is a solid baseline for this dataset.
 
-**What could improve it (lightweight options):**
+**What could improve it:**
 - **Tighten feature selection:** tune χ² `k` (e.g., 70–90% of features) to drop weak/noisy columns and sharpen the margin.
 - **Minority precision for Class 5:**  
   - Calibrate probabilities (Platt/sigmoid) and set a **slightly higher class-5 threshold** to cut false positives.  
