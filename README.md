@@ -65,7 +65,7 @@ All steps above are wrapped in a `ColumnTransformer` and `Pipeline`, and hyperpa
 - The exact same transformations are applied to validation/test sets.
 
 
-## 2: Preprocessing code + Train code + Result
+## 2.1 Preprocessing code + Train code + Result
 
 ```python
 !pip -q install scikit-learn pandas numpy
@@ -205,6 +205,7 @@ print("Best params:", search.best_params_)
 print(f"Test Accuracy: {acc:.4f}  |  Macro-F1: {f1m:.4f}")
 print("\nClassification report:\n", classification_report(yte, yp, zero_division=0))
 
+Train Accuracy: 0.9942  |  Macro-F1: 0.9829
 Test Accuracy: 0.9829  |  Macro-F1: 0.9744
 
 Classification report:
@@ -236,6 +237,22 @@ print(f"Test  Error: {test_err:.4f}")
 
 Train Error: 0.0058
 Test  Error: 0.0171
+
+from sklearn.model_selection import StratifiedKFold, cross_val_predict
+from sklearn.metrics import accuracy_score, confusion_matrix
+
+cv = StratifiedKFold(n_splits=2, shuffle=True, random_state=42)
+
+yp_val = cross_val_predict(search.best_estimator_, Xtr, ytr, cv=cv, method='predict', n_jobs=-1)
+yp_te  = best.predict(Xte)
+
+val_err = 1.0 - accuracy_score(ytr, yp_val)
+test_err = 1.0 - accuracy_score(yte, yp_te)
+
+print(f"Validation Error: {val_err:.4f}")
+print(f"Test Error: {test_err:.4f}")
+Validation Error: 0.0239
+Test Error: 0.0171
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -286,5 +303,159 @@ plot_cm_log(cm_train, "Confusion Matrix (TRAIN) — log scale").savefig(
 plot_cm_log(cm_test, "Confusion Matrix (TEST) — log scale").savefig(
     "artifacts/confusion_matrix_test_log.png", dpi=180, bbox_inches="tight"
 )
+```
+![Confusion Matrix Train](https://github.com/zonglinz/CSE151Project/blob/Milestone3/Unknown-16.png?raw=true)
+![Confusion Matrix Test](https://github.com/zonglinz/CSE151Project/blob/Milestone3/Unknown-15.png?raw=true)
+
+## 2.2 Result(something i want to say)
+- **Generalization gap:** ~**1.13%** (0.9942 → 0.9829). This is small, indicating **low overfitting** and a well-regularized boundary for the chosen `C, γ`.  
+- **Macro-F1 vs Weighted-F1:** Macro-F1 **0.9744** (treats classes equally) vs weighted avg (≈ overall **0.98**). The slightly lower macro-F1 reflects performance on **minority classes** (esp. Class 5 with only 8 samples).
+
+### B. Class-wise Behavior (from the test classification report)
+- **High-support classes (2, 3, 9):** All near-perfect (F1 ≈ 0.99–1.00), showing the model captures dominant family patterns very well.  
+- **Moderate classes (1, 4, 6, 7, 8):** F1 in **0.96–0.99** range.  
+- **Minor class (5, n=8):** **Recall 1.00**, **Precision 0.89**, **F1 0.94**.  
+  - *Interpretation:* The model **finds every true Class-5 sample** (no false negatives), but a few **false positives** get labeled as Class-5. On an imbalanced task this is an acceptable trade-off if missing Class-5 is costly; otherwise, we can tune thresholds (see below).
+
+### C. Error Patterns & What They Likely Mean
+- **Precision-recall trade-off for Class-5:** High recall + lower precision ⇒ the decision boundary is **generous** toward Class-5. Likely some feature combinations (e.g., unusual control-flow or arithmetic counts) overlap with rare families.  
+- **Class-8 slightly lower recall (0.96):** A few Class-8 samples likely sit near boundaries shared with classes 1/4/7 (families with similar instruction “texture”).  
+- **Overall:** Errors are **sparse** and concentrated in **minority, edge-case** regions—consistent with high macro-F1.
+
+### D. Bias–Variance Perspective
+- **`γ ≈ 0.0053`** (post-standardization) is **not** extreme; it yields a **smooth** RBF surface rather than a wiggly boundary.  
+- **`C ≈ 41.8`** enforces **moderate margin hardness**—enough to fit complex structure, but your small generalization gap suggests **variance is under control**.  
+- With χ² keeping ≈90% of features and targeted `log1p`, the model has **ample capacity** without drifting into overfit; the data seems linearly separable in RBF space with a clean margin.
+
+### E. Reliability & Robustness Checks (recommended)
+- **Variance of estimates:** 2-fold CV is efficient but has **higher variance**. To report stability, repeat the search with a different `random_state` or use **RepeatedStratifiedKFold** (e.g., 2 folds × 3 repeats) just to measure spread in CV F1 (you can keep the same final model).  
+- **Significance vs other models:** If you compared multiple finalists, run a **McNemar test** on the *same* test split to confirm any small differences are statistically meaningful.
+
+### F. Thresholds, Calibration & Operating Points
+- If false positives on Class-5 are costly, calibrate and adjust decision thresholds:
+  - Fit `CalibratedClassifierCV(best_estimator, method="sigmoid", cv="prefit")` (or refit SVC with `probability=True`) and set **class-specific thresholds** to balance precision/recall per your costs.
+- **Macro-F1** is strong already; calibration mainly helps **decision control** rather than macro-F1 itself.
+
+### G. What Drove Performance Here
+- **Preprocessing:**  
+  - Median imputation prevents losing rows;  
+  - **Clip + MinMax** guaranteed **non-negative** features for χ²;  
+  - **Targeted `log1p`** on high-range/high-card columns stabilized scale and added nonlinear signal **without O(p²)** blow-up;  
+  - χ² at ~90% preserved most discriminative features;  
+  - Final **standardization** suited the SVM margin geometry.
+- **Modeling:** A **balanced RBF-SVM** is a strong baseline for this domain; your search found a **smooth yet expressive** operating point.
 
 
+## 3 compare with baseline model
+## This is my baseline model(Has no separating Numeric and Categorical features and hot encoding) code with classification test
+```python
+!pip -q install scikit-learn pandas numpy
+
+import io, numpy as np, pandas as pd
+from google.colab import files
+from sklearn.model_selection import train_test_split, StratifiedKFold, RandomizedSearchCV
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import FunctionTransformer, MinMaxScaler, StandardScaler
+from sklearn.feature_selection import SelectKBest, chi2
+from sklearn.svm import SVC
+from sklearn.metrics import classification_report, accuracy_score, f1_score, confusion_matrix
+import joblib
+
+
+
+df = pd.read_csv('/content/data.csv')
+
+LABEL_COL = None
+label_like = {"label","labels","target","class","classes","category","y","outcome","diagnosis"}
+for c in df.columns:
+    if c.strip().lower() in label_like:
+        LABEL_COL = c
+        break
+if LABEL_COL is None:
+    n = len(df)
+    for c in df.columns:
+        nu = df[c].nunique(dropna=False)
+        if 2 <= nu <= min(50, max(2,int(0.2*n))):
+            LABEL_COL = c
+            break
+if LABEL_COL is None:
+    raise ValueError("Couldn't infer label column. Please set LABEL_COL to the correct column name.")
+
+feat_cols = [c for c in df.columns if c != LABEL_COL and pd.api.types.is_numeric_dtype(df[c])]
+assert feat_cols, "No numeric features found."
+X = df[feat_cols].to_numpy()
+y = df[LABEL_COL].astype(str).to_numpy()
+
+def clip_nonneg(X):
+    return np.maximum(X, 0)
+
+n_features = X.shape[1]
+k = min(n_features, max(10, int(0.9*n_features)))
+
+pipe = Pipeline([
+    ("clip", FunctionTransformer(clip_nonneg, accept_sparse=False)),
+    ("minmax", MinMaxScaler()),
+    ("chi2", SelectKBest(chi2, k=k)),
+    ("std", StandardScaler(with_mean=True, with_std=True)),
+    ("svc", SVC(kernel="rbf", class_weight="balanced"))
+])
+
+Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
+
+param_dist = {
+    "svc__C": np.logspace(-1, 3, 30),    
+    "svc__gamma": np.logspace(-6, 0, 30),  
+}
+cv = StratifiedKFold(n_splits=2, shuffle=True, random_state=42)
+search = RandomizedSearchCV(
+    pipe, param_distributions=param_dist, n_iter=25, scoring="f1_macro",
+    n_jobs=-1, cv=cv, random_state=42, verbose=1
+)
+search.fit(Xtr, ytr)
+
+best = search.best_estimator_
+yp = best.predict(Xte)
+acc = accuracy_score(yte, yp)
+f1m = f1_score(yte, yp, average="macro")
+print("Best params:", search.best_params_)
+print(f"Test Accuracy: {acc:.4f}  |  Macro-F1: {f1m:.4f}")
+print("\nClassification report:\n", classification_report(yte, yp, zero_division=0))
+
+Test Accuracy: 0.9825  |  Macro-F1: 0.9749
+
+Classification report:
+               precision    recall  f1-score   support
+
+           1       0.95      0.95      0.95       308
+           2       0.99      0.98      0.99       496
+           3       1.00      1.00      1.00       588
+           4       0.94      1.00      0.97        95
+           5       1.00      0.88      0.93         8
+           6       0.98      0.99      0.99       150
+           7       0.99      0.99      0.99        80
+           8       0.98      0.97      0.97       246
+           9       0.99      0.99      0.99       203
+
+    accuracy                           0.98      2174
+   macro avg       0.98      0.97      0.97      2174
+weighted avg       0.98      0.98      0.98      2174
+
+
+```
+
+
+
+
+
+## 4) Conclusion & Next Steps
+
+**Conclusion (1st model):**  
+Our RBF-SVM with full preprocessing (impute → encode → targeted log1p → MinMax → χ² → standardize) delivers **Test Accuracy = 0.9829** and **Macro-F1 = 0.9744** with a small train–test gap (**Error: train 0.0058 vs test 0.0171**). Performance is strong and consistent across classes; the only notable weakness is **Class 5** (very small support, n=8) where **recall = 1.00** and **precision = 0.89** (a few false positives). Overall, the model generalizes well and is a solid baseline for this dataset.
+
+**What could improve it (lightweight options):**
+- **Tighten feature selection:** tune χ² `k` (e.g., 70–90% of features) to drop weak/noisy columns and sharpen the margin.
+- **Minority precision for Class 5:**  
+  - Calibrate probabilities (Platt/sigmoid) and set a **slightly higher class-5 threshold** to cut false positives.  
+  - Or use `class_weight` with a small **boost for class 5** via a dict (keeps runtime similar).
+- **Local hyperparam refine:** small search around the found best (`C≈41.8`, `γ≈0.0053`) to fine-tune precision/recall trade-offs.
+- **Data balance tweaks:** light oversampling of Class 5 (e.g., simple duplication) to stabilize its decision region without heavy runtime costs.
