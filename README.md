@@ -556,3 +556,7 @@ Our RBF-SVM with full preprocessing (impute → encode → targeted log1p → Mi
   - Or use `class_weight` with a small **boost for class 5** via a dict (keeps runtime similar).
 - **Local hyperparam refine:** small search around the found best (`C≈41.8`, `γ≈0.0053`) to fine-tune precision/recall trade-offs.
 - **Data balance tweaks:** light oversampling of Class 5 (e.g., simple duplication) to stabilize its decision region without heavy runtime costs.
+
+## 5 All my code notebooks 
+[notebooks/Good_verison.ipynb](Good_verison.ipynb)
+[notebooks/baseline_model.ipynb](baseline_model.ipynb)
