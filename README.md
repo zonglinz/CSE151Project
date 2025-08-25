@@ -21,9 +21,9 @@ This conservative typing ensures that enumerations and codes are **one‑hot enc
 All imputation happens **inside the pipeline**, so it is **fit only on training folds** (no leakage).
 
 ## 1.4 Targeted nonlinearity / feature expansion (numeric)
-We create a **FeatureUnion** with two branches over numeric inputs:
+I create a **FeatureUnion** with two branches over numeric inputs:
 - **Identity pass-through** (keeps the original numeric features).
-- **Targeted log transform** on *heavy* features: we mark a numeric column as *heavy* if `max(value) > 100` **or** `nunique > 50`. Those columns get `log1p(x) = log(1 + x)`.
+- **Targeted log transform** on *heavy* features: I mark a numeric column as *heavy* if `max(value) > 100` **or** `nunique > 50`. Those columns get `log1p(x) = log(1 + x)`.
 
 **Why log1p?**
 - Tames extreme right-skew and large dynamic ranges.
@@ -53,7 +53,7 @@ Two complementary scalers are used at different stages:
 Low‑cardinality numeric codes are intentionally treated as categorical here to avoid imposing false numeric distances.
 
 ## 1.8 Feature selection (dimensionality & noise control)
-We apply `SelectKBest(chi2)` with:
+I apply `SelectKBest(chi2)` with:
 ```
 k = min(n_features, max(10, int(0.9 * n_features)))
 ```
