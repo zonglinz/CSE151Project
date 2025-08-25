@@ -517,9 +517,32 @@ print(f"Train error={train_err:.4f} | Val error={val_err:.4f} | Test error={test
 print(f"Diagnosis: {diag}")
 ```
 ### Baseline
+![](https://github.com/zonglinz/CSE151Project/blob/Milestone3/Unknown-18.png?raw=true)
 
+### My model
+![](https://github.com/zonglinz/CSE151Project/blob/Milestone3/Unknown-19.png?raw=true)
 
+- **Underfitting (left side, low `C`)**: both **train** and **validation** errors are high → margin too soft.
+- **Good fit (middle, `C ≈ 1–50`)**: both errors drop and the **gap is small** → best generalization.
+- **Overfitting regime (far right, very large `C`)**: **train error → 0**, while **validation error flattens/creeps up** → boundary too hard/noisy.
 
+Baseline plot: dashed line is at a large C → train error ~0 while validation error flattens/creeps up ⇒ possible overfitting.
+my model plot: dashed line sits in the mid-C “good fit” region, near the minimum of validation error ⇒ better generalization.
+
+### B) Model(s) compared & decision
+| Model | Best `C` | Best `γ` | Test Accuracy | Test Macro-F1 | Notes |
+|---|---:|---:|---:|---:|---|
+| **Baseline SVM** | ~385.66 | ~0.02212 | 0.9816 | 0.9681 | Slightly higher variance (right side of curve). |
+| **Final SVM (picked)** | **~41.75** | **~0.00530** | **0.9829** | **0.9744** | Smaller train–test gap; best macro-F1. |
+
+**Pick:** the **Final SVM** because it minimizes validation/test error with a **small gap** (good generalization) and **best Macro-F1 (0.9744)**.
+
+### C) What to try next
+- **K-Nearest Neighbors (KNN):** non-parametric, can capture local structure missed by SVM; tune `k` with CV (needs scaling—already done).
+- **Decision Tree:** interpretable error analysis; control depth/min_samples_split to curb variance.
+- **Naive Bayes (Multinomial/Bernoulli):** fast baseline for count/indicator features; good sanity check on separability.
+
+> Current generalization snapshot: **Train error = 0.0058**, **Test error = 0.0171** (gap ≈ **1.1%**)
 
 ## 4) Conclusion & Next Steps
 
