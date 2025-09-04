@@ -1,3 +1,4 @@
+# Goats please Vote for me
 # MS4
 - **Load**: `pd.read_csv('/content/data.csv')` link for downoload dataset: https://drive.google.com/file/d/1LDS1KWr3CL4DPNiDOkBB0IVSiXELVpv_/view?usp=sharing
 ## 1 Train Second Model
@@ -819,7 +820,191 @@ plot_cm_log(cm_test, "Confusion Matrix (TEST) — log scale").savefig(
 )
 ```
 
-###Preprocessing + Train(Model 2)
+### Preprocessing + Train(Model 2)
+
+Split: train_test_split(test_size=0.20, stratify=y, random_state=42).
+
+Preprocess (train-only fit; leakage-safe):
+- Categorical → SimpleImputer(most_frequent) → OneHotEncoder(ignore_unknown, sparse=True)
+- Numeric → SimpleImputer(median) → MaxAbsScaler (sparse-friendly)
+
+Dimensionality reduction: TruncatedSVD with auto dims = 67 (≤ n_features−1=68−1), L2 normalization on embeddings.
+
+Explained variance ≈ 1.0000.
+
+Clustering: MiniBatchKMeans, k grid = {#labels, 2×, 3×, 4×} = {9,18,27,36}.
+
+Choose k by validation accuracy (labels only used for selection + mapping; clustering remains unsupervised).
+
+Picked k = 36, val acc 0.7891.
+
+Cluster → label mapping: Hungarian assignment on the train split (global optimum).
+```python
+!pip -q install numpy pandas scikit-learn scipy
+
+import os, json, numpy as np, pandas as pd
+from collections import Counter
+from sklearn.model_selection import train_test_split
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, MaxAbsScaler, normalize
+from sklearn.impute import SimpleImputer
+from sklearn.decomposition import TruncatedSVD
+from sklearn.cluster import MiniBatchKMeans
+from sklearn.metrics import accuracy_score, f1_score, classification_report, confusion_matrix
+from scipy.optimize import linear_sum_assignment
+
+DATA_PATH   = "/content/data.csv"
+OUT_DIR     = "artifacts_model2_short"
+EMBED_DIMS  = 192      
+USE_L2      = True     
+SEED        = 42
+
+os.makedirs(OUT_DIR, exist_ok=True)
+
+df = pd.read_csv(DATA_PATH).drop_duplicates().reset_index(drop=True)
+
+
+LABEL_COL = None
+for c in df.columns:
+    if c.strip().lower() in {"label","labels","target","class","classes","category","y","outcome","diagnosis"}:
+        LABEL_COL = c; break
+if LABEL_COL is None and "Class" in df.columns:
+    LABEL_COL = "Class"
+if LABEL_COL is None:
+    n = len(df)
+    for c in df.columns:
+        nu = df[c].nunique(dropna=False)
+        if 2 <= nu <= min(50, max(2, int(0.2*n))):
+            LABEL_COL = c; break
+if LABEL_COL is None:
+    raise ValueError("Couldn't infer label column.")
+
+y = df[LABEL_COL].astype(str).to_numpy()
+feat_cols = [c for c in df.columns if c != LABEL_COL]
+
+def is_num(s): 
+    return pd.api.types.is_numeric_dtype(s)
+obj_cols      = [c for c in feat_cols if df[c].dtype == "object"]
+low_card_cols = [c for c in feat_cols if is_num(df[c]) and df[c].nunique() <= 5]
+cat_cols      = sorted(set(obj_cols + low_card_cols))
+num_cols      = [c for c in feat_cols if c not in cat_cols]
+
+
+Xtr_df, Xte_df, ytr, yte = train_test_split(df[feat_cols], y, test_size=0.20, stratify=y, random_state=SEED)
+
+
+def make_ohe_sparse():
+    try:    return OneHotEncoder(handle_unknown="ignore", sparse_output=True)
+    except: return OneHotEncoder(handle_unknown="ignore", sparse=True)
+
+cat_pipe = Pipeline([("imp", SimpleImputer(strategy="most_frequent")), ("ohe", make_ohe_sparse())])
+num_pipe = Pipeline([("imp", SimpleImputer(strategy="median")), ("scale", MaxAbsScaler())])
+
+trs = []
+if num_cols: trs.append(("num", num_pipe, num_cols))
+if cat_cols: trs.append(("cat", cat_pipe, cat_cols))
+pre_train = ColumnTransformer(trs, remainder="drop", sparse_threshold=1.0)
+
+Xtr_pre = pre_train.fit_transform(Xtr_df)
+Xte_pre = pre_train.transform(Xte_df)
+n_features = Xtr_pre.shape[1]
+
+svd_dims = max(2, min(EMBED_DIMS, n_features - 1))
+svd = TruncatedSVD(n_components=svd_dims, random_state=SEED)
+
+Ztr = svd.fit_transform(Xtr_pre)
+Zte = svd.transform(Xte_pre)
+
+if USE_L2:
+    Ztr = normalize(Ztr); Zte = normalize(Zte)
+
+print(f"[Info] Preprocessed features: {n_features} | SVD dims used: {svd_dims} | var≈{svd.explained_variance_ratio_.sum():.4f}")
+
+def hungarian_map(clusters, labels):
+    clus = np.unique(clusters); labs = np.unique(labels)
+    M = np.zeros((len(clus), len(labs)), dtype=int)
+    ci = {c:i for i,c in enumerate(clus)}; li = {l:i for i,l in enumerate(labs)}
+    for c, y in zip(clusters, labels): M[ci[c], li[y]] += 1
+    r, c = linear_sum_assignment(-M)
+    mp = {clus[i]: labs[j] for i, j in zip(r, c)}
+    for c_id in clus:
+        if c_id not in mp: mp[c_id] = labs[np.argmax(M[ci[c_id]])]
+    return mp
+
+
+n_labels = len(np.unique(ytr))
+k_grid = sorted(set([n_labels, 2*n_labels, 3*n_labels, 4*n_labels])) 
+
+Ztr_tr, Ztr_val, ytr_tr, ytr_val = train_test_split(Ztr, ytr, test_size=0.2, stratify=ytr, random_state=SEED)
+
+best = {"k": None, "val_acc": -1, "model": None, "map": None}
+for k in k_grid:
+    mbk = MiniBatchKMeans(n_clusters=k, random_state=SEED, n_init=15, batch_size=4096, max_iter=250).fit(Ztr_tr)
+    mapping = hungarian_map(mbk.labels_, ytr_tr)
+    yval_pred = np.array([mapping[c] for c in mbk.predict(Ztr_val)], dtype=object)
+    acc = accuracy_score(ytr_val, yval_pred)
+    if acc > best["val_acc"]:
+        best.update({"k": k, "val_acc": acc, "model": mbk, "map": mapping})
+
+print(f"[k-choice] k∈{k_grid} | picked k={best['k']} | val_acc={best['val_acc']:.4f}")
+
+
+final = MiniBatchKMeans(n_clusters=best["k"], random_state=SEED, n_init=20, batch_size=8192, max_iter=300).fit(Ztr)
+c_tr, c_te = final.labels_, final.predict(Zte)
+cl2lb = hungarian_map(c_tr, ytr)
+fallback = Counter(ytr).most_common(1)[0][0]
+ytr_pred = np.array([cl2lb.get(c, fallback) for c in c_tr], dtype=object)
+yte_pred = np.array([cl2lb.get(c, fallback) for c in c_te], dtype=object)
+
+def report(name, y_true, y_pred):
+    acc = accuracy_score(y_true, y_pred)
+    f1m = f1_score(y_true, y_pred, average="macro", zero_division=0)
+    print(f"{name} Accuracy: {acc:.4f} | Macro-F1: {f1m:.4f}")
+    print(classification_report(y_true, y_pred, zero_division=0))
+    return acc, f1m
+
+print("\n=== MODEL 2 (SHORT+FIXED) RESULTS ===")
+acc_tr, f1m_tr = report("TRAIN", ytr, ytr_pred)
+acc_te, f1m_te = report("TEST ", yte, yte_pred)
+print(f"Train Error: {1-acc_tr:.4f} | Test Error: {1-acc_te:.4f} | Gap: {(1-acc_te)-(1-acc_tr):.4f}")
+
+TRAIN Accuracy: 0.8306 | Macro-F1: 0.7239
+              precision    recall  f1-score   support
+
+           1       0.85      0.89      0.87      1203
+           2       0.83      0.94      0.88      1982
+           3       0.99      0.85      0.92      2353
+           4       0.43      0.89      0.58       379
+           5       0.04      0.29      0.07        34
+           6       0.80      0.79      0.80       577
+           7       0.89      0.82      0.85       318
+           8       0.99      0.71      0.83       978
+           9       0.93      0.59      0.72       806
+
+    accuracy                           0.83      8630
+   macro avg       0.75      0.75      0.72      8630
+weighted avg       0.88      0.83      0.84      8630
+
+TEST  Accuracy: 0.8295 | Macro-F1: 0.7199
+              precision    recall  f1-score   support
+
+           1       0.85      0.87      0.86       301
+           2       0.85      0.94      0.89       496
+           3       0.99      0.82      0.89       589
+           4       0.41      0.92      0.56        95
+           5       0.00      0.00      0.00         8
+           6       0.82      0.83      0.82       144
+           7       0.89      0.78      0.83        79
+           8       0.98      0.77      0.86       245
+           9       0.95      0.63      0.75       201
+
+    accuracy                           0.83      2158
+   macro avg       0.75      0.73      0.72      2158
+weighted avg       0.89      0.83      0.85      2158
+
+Train Error: 0.1694 | Test Error: 0.1705 | Gap: 0.0011
+```
 
 ## Result for Model 1(Supervised and Model 2 Unsupervised)
 ### Model 1 result 
@@ -891,6 +1076,38 @@ weighted avg       0.98      0.98      0.98      2158
 **Pick:** the **Final SVM** because it minimizes validation/test error with a **small gap** (good generalization) and **best Macro-F1 (0.9744)**.
 
 ### Model 2 result
+![Confusion Matrix Train](https://github.com/zonglinz/CSE151Project/blob/main/cm_train.png?raw=true)
+![Confusion Matrix Test](https://github.com/zonglinz/CSE151Project/blob/main/cm_test.png?raw=true)
+### Headline Metrics
+| Split | Accuracy | Macro‑F1 | Error *(1 − Accuracy)* |
+|---|---:|---:|---:|
+| **Train** | **0.8306** | **0.7239** | **0.1694** |
+| **Test**  | **0.8295** | **0.7199** | **0.1705** |
+
+**Generalization gap:** **+0.0011** (test error − train error) → ~**0.11%**.  
+This tiny gap indicates a **good fit**: the model generalizes essentially as well as it trains for `k=36`.
+
+#### Interpretation & Takeaways
+- **Bias–variance:** The low gap suggests variance is controlled; increasing k up to 36 improved both train and validation accuracy without overfitting (see fitting graph).  
+- **Why Macro‑F1 < Accuracy:** Macro‑F1 equally weights each class. An **ultra‑minor class (Class 5, n=8)** underperforms, which drags macro‑F1 below overall accuracy even though major classes score high.
+- **Class‑wise behavior (Test):**
+  - **Strong:** 1, 2, 3, 6, 7, 8, 9 — clusters align well with these labels.
+  - **Mixed:** 4 — decent F1; some boundary confusion.
+  - **Weak:** 5 — very small support causes low precision/recall under k‑means’ spherical assumption.
+
+### Comparative Discussion (Model 1 vs. Model 2)
+
+| Aspect | Model 1 — RBF‑SVM (supervised) | Model 2 — SVD→KMeans (unsupervised) |
+|---|---|---|
+| Signal use | Learns directly from labels; maximizes task performance | Discovers structure without labels; requires post‑hoc label mapping |
+| Capacity control | χ² selection + kernel hyperparams; tiny gap | k selection via validation; tiny gap as well |
+| Accuracy (Test) | **0.9829** (macro‑F1 **0.9744**) | **0.8295** (macro‑F1 **0.7199**) |
+| Minority behavior | Good overall; class‑5 recall perfect, a few FPs | Weak for class‑5/7 due to cluster geometry + imbalance |
+| Interpretability | Moderate (support vectors, feature selection) | High‑level cluster view; label mapping explains segments |
+| Runtime | Moderate (CV + SVM) | Fast (mini‑batch; tiny k‑grid) |
+
+**Bottom line.** Model 1 remains the **state‑of‑the‑art baseline** for accuracy. Model 2 is **useful as an unsupervised view** and forms a strong base for semi‑/weak‑supervised extensions that can reintroduce label information economically.
+
 
 ## Discussion
 ### Why & framing.
@@ -931,5 +1148,11 @@ Contribution: I completed the project independently. Responsibilities included: 
 
 Note: This was an individual project; there were no teammates.
 
+# You can find all code here
+[notebooks/MS3_svm_chi2.ipynb](notebooks/MS3_svm_chi2.ipynb)
 
+[notebooks/Good_verison.ipynb](Good_verison.ipynb)
 
+[notebooks/baseline_model.ipynb](baseline_model.ipynb)
+
+[notebooks/MS4_Model.ipynb](MS4_Model.ipynb)
