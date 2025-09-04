@@ -1,5 +1,5 @@
 # MS4
-
+- **Load**: `pd.read_csv('/content/data.csv')` link for downoload dataset: https://drive.google.com/file/d/1LDS1KWr3CL4DPNiDOkBB0IVSiXELVpv_/view?usp=sharing
 ## 1 Train Second Model
 ### Methods
 Split: train_test_split(test_size=0.20, stratify=y, random_state=42).
@@ -187,6 +187,8 @@ Train Error: 0.1694 | Test Error: 0.1705 | Gap: 0.0011
 ```
 
 ## 2 Evualtion 
+![Confusion Matrix Train](https://github.com/zonglinz/CSE151Project/blob/main/cm_train.png?raw=true)
+![Confusion Matrix Test](https://github.com/zonglinz/CSE151Project/blob/main/cm_test.png?raw=true)
 ### Headline Metrics
 | Split | Accuracy | Macro‑F1 | Error *(1 − Accuracy)* |
 |---|---:|---:|---:|
@@ -266,7 +268,73 @@ plt.close()
 ## 4 My MS4 workspace and code
 [notebooks/MS4_Model.ipynb](MS4_Model.ipynb)
 
-# Final Readme
+## 5 Conclusion 
+
+### 5.1 Model 2 (Unsupervised: TruncatedSVD → MiniBatchKMeans + Hungarian)
+
+**Pipeline.** Train‑only preprocessing (impute/encode/scale) → **TruncatedSVD** to **67 dims** (≈100% variance) → L2 normalize → **MiniBatchKMeans**; pick **k=36** via validation accuracy → **Hungarian** map cluster→label on train; apply mapping to test.
+
+**Headline metrics**
+- **Train:** Accuracy **0.8306**, Macro‑F1 **0.7239**, Error **0.1694**  
+- **Test:**  Accuracy **0.8295**, Macro‑F1 **0.7199**, Error **0.1705**  
+- **Generalization gap:** **~0.11%** → **very small**, i.e., **good fit** for chosen capacity.
+
+**What it did well.**
+- Learns meaningful structure **without labels**; low gap shows the clustering capacity is appropriate (see fitting graph).
+- Performs strongly on high‑support classes.
+
+**Where it struggled.**
+- **Class 5** (only 8 test samples) and occasionally **7**: macro‑F1 drops because k‑means assumes **spherical** clusters and minority classes have little “surface area” in the cluster map, so they are often absorbed by nearby major classes.
+---
+
+### 5.2 Comparative Discussion (Model 1 vs. Model 2)
+
+| Aspect | Model 1 — RBF‑SVM (supervised) | Model 2 — SVD→KMeans (unsupervised) |
+|---|---|---|
+| Signal use | Learns directly from labels; maximizes task performance | Discovers structure without labels; requires post‑hoc label mapping |
+| Capacity control | χ² selection + kernel hyperparams; tiny gap | k selection via validation; tiny gap as well |
+| Accuracy (Test) | **0.9829** (macro‑F1 **0.9744**) | **0.8295** (macro‑F1 **0.7199**) |
+| Minority behavior | Good overall; class‑5 recall perfect, a few FPs | Weak for class‑5/7 due to cluster geometry + imbalance |
+| Interpretability | Moderate (support vectors, feature selection) | High‑level cluster view; label mapping explains segments |
+| Runtime | Moderate (CV + SVM) | Fast (mini‑batch; tiny k‑grid) |
+
+**Bottom line.** Model 1 remains the **state‑of‑the‑art baseline** for accuracy. Model 2 is **useful as an unsupervised view** and forms a strong base for semi‑/weak‑supervised extensions that can reintroduce label information economically.
+
+---
+
+### 5.3 How to Improve Model 2 (practical, data‑backed steps)
+
+1. **Replace k‑means with Gaussian Mixtures (diag/tied)** on SVD space.  
+   *Why:* allows **elliptical** clusters; minorities that are stretched/anisotropic won’t be forced into spherical cells.  
+   *Expectation:* ↑ recall/precision for 5/7; small ↑ in overall accuracy.
+
+2. **Soft decoding instead of hard mapping.**  
+   *Why:* score labels by **∑ P(cluster|x) × purity(cluster,label)**, then pick the max; avoids single‑cluster bottlenecks.  
+   *Expectation:* more flexible assignments for minority cases near cluster boundaries.
+
+3. **Capacity‑constrained mapping.**  
+   *Why:* ensure each minority label (e.g., 5, 7) gets ≥ a few clusters; prevents absorption by major classes.  
+   *Expectation:* ↑ minority recall with limited impact on majors.
+
+4. **Tiny supervised head on unsupervised features (rubric‑approved).**  
+   Train a **multinomial Logistic Regression** on `[SVD ⊕ cluster soft‑memberships]` with **class weights** (boost 5/7).  
+   *Why:* preserves the unsupervised representation but optimizes the final decision boundary for labels.  
+   *Expectation:* consistent **accuracy lift** and **macro‑F1 gains** (esp. class‑5/7).
+---
+
+### 5.4 Final Takeaways
+
+- **If the goal is raw predictive performance, Model 1 wins** decisively on both accuracy and macro‑F1 with a still‑tiny gap.  
+- **Model 2** is a **good‑fit unsupervised baseline** (negligible gap) that **benefits strongly** from (i) **GMMs** or **spectral clustering** for shape flexibility and (ii) a **light supervised head** on top of the unsupervised features to recover minority performance.  
+- Going forward, the most efficient path is: **SVD → GMM (diag/tied)** + **soft decoding**; optionally add the **logistic head** with class weights for the final label decision.
+
+## 6 Predictions of Correct, FP, and FN (Test Set)
+[notebooks/predictions_test.csv](predictions_test.csv)
+
+[notebooks/fpfn_test.csv](fpfn_test.csv)
+
+## 
+# Final Readme: Written Report
 ## Introduction 
 ### Why chose this?
 Security teams face an asymmetric fight: adversaries continuously repack, obfuscate, and rebrand malware, while defenders must triage vast volumes of binaries quickly and accurately. This project studies multi-class malware family classification using a well-scoped static dataset: 10,868 Windows samples with 69 engineered features extracted from disassembly—counts of assembly mnemonics (e.g., control-flow, data movement, arithmetic/logic) plus file-level scale (size_asm, line_count_asm). Labels cover 9 families, with pronounced class imbalance (e.g., some families are rare), zero-inflated counts, and long-tailed feature distributions. The dataset is clean (no missing values), enabling reproducible experimentation without heavy data cleaning.
